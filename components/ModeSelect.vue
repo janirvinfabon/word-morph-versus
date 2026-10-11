@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useGameSession } from '~/composables/useGameSession'
+import HowToPlay from '~/components/HowToPlay.vue'
 
 const session = useGameSession()
 </script>
@@ -39,6 +40,10 @@ const session = useGameSession()
           </p>
         </button>
       </div>
+    </div>
+
+    <div class="mt-6">
+      <HowToPlay />
     </div>
   </div>
 </template>
