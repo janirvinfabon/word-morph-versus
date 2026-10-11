@@ -1,0 +1,8 @@
+# Wrangler local dev state & build artifacts (machine-local, regenerated)
+.wrangler/
+dist/
+
+# Node
+node_modules
+*.log
+.DS_Store

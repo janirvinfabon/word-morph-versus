@@ -1,0 +1,44 @@
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #__nuxt {
+    height: 100%;
+  }
+  body {
+    @apply bg-arcade-bg text-slate-100 font-display antialiased;
+    background-image:
+      radial-gradient(circle at 15% 15%, rgba(56, 189, 248, 0.12), transparent 40%),
+      radial-gradient(circle at 85% 25%, rgba(251, 113, 133, 0.12), transparent 40%),
+      radial-gradient(circle at 50% 100%, rgba(251, 191, 36, 0.1), transparent 45%);
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-6 py-3 font-bold
+           transition-all duration-150 active:translate-y-[2px] disabled:opacity-40
+           disabled:cursor-not-allowed select-none;
+  }
+  .btn-primary {
+    @apply btn bg-arcade-p1 text-slate-900 shadow-[0_5px_0_0_#0ea5e9] hover:brightness-110;
+  }
+  .btn-pink {
+    @apply btn bg-arcade-p2 text-slate-900 shadow-[0_5px_0_0_#e11d48] hover:brightness-110;
+  }
+  .btn-gold {
+    @apply btn bg-arcade-gold text-slate-900 shadow-[0_5px_0_0_#d97706] hover:brightness-110;
+  }
+  .btn-ghost {
+    @apply btn bg-white/5 text-slate-200 ring-1 ring-white/15 hover:bg-white/10;
+  }
+  .panel {
+    @apply rounded-3xl bg-arcade-panel/80 ring-1 ring-white/10 backdrop-blur;
+  }
+}

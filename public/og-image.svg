@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <radialGradient id="g1" cx="18%" cy="20%" r="55%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="g2" cx="85%" cy="25%" r="55%">
+      <stop offset="0%" stop-color="#fb7185" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#fb7185" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="#0f0a1e"/>
+  <rect width="1200" height="630" fill="url(#g1)"/>
+  <rect width="1200" height="630" fill="url(#g2)"/>
+
+  <!-- Title -->
+  <g font-family="Verdana, 'Baloo 2', sans-serif" font-weight="bold" text-anchor="middle">
+    <text x="600" y="285" font-size="110">
+      <tspan fill="#38bdf8">Word</tspan><tspan fill="#f1f5f9">Morph</tspan>
+    </text>
+    <text x="600" y="400" font-size="72" fill="#fb7185">| Versus</text>
+  </g>
+
+  <!-- Tagline -->
+  <text x="600" y="475" font-family="Verdana, sans-serif" font-size="30"
+        text-anchor="middle" fill="#94a3b8">
+    A high-stakes 2-player word duel. One letter. 15 seconds.
+  </text>
+
+  <!-- Letter tiles accent -->
+  <g transform="translate(437,520)">
+    <rect x="0"   y="0" width="60" height="60" rx="12" fill="none" stroke="#38bdf8" stroke-width="4"/>
+    <rect x="76"  y="0" width="60" height="60" rx="12" fill="none" stroke="#fbbf24" stroke-width="4"/>
+    <rect x="152" y="0" width="60" height="60" rx="12" fill="none" stroke="#fb7185" stroke-width="4"/>
+    <rect x="228" y="0" width="60" height="60" rx="12" fill="none" stroke="#4ade80" stroke-width="4"/>
+    <g font-family="Verdana, sans-serif" font-size="36" font-weight="bold" text-anchor="middle">
+      <text x="30"  y="42" fill="#38bdf8">W</text>
+      <text x="106" y="42" fill="#fbbf24">O</text>
+      <text x="182" y="42" fill="#fb7185">R</text>
+      <text x="258" y="42" fill="#4ade80">D</text>
+    </g>
+  </g>
+
+  <!-- Creator credit -->
+  <text x="600" y="608" font-family="Verdana, sans-serif" font-size="24"
+        text-anchor="middle" fill="#fbbf24" font-weight="bold">
+    @MSTRIRVING
+  </text>
+</svg>
