@@ -12,7 +12,8 @@
     "preview": "nuxi preview",
     "postinstall": "nuxi prepare",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "deploy": "bash scripts/deploy-frontend.sh"
   },
   "devDependencies": {
     "@nuxtjs/tailwindcss": "^6.12.2",
