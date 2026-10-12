@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "deploy:full": "bash scripts/deploy-worker.sh",
     "dry-run": "wrangler deploy --dry-run --outdir=dist",
     "test": "node --test 'test/**/*.test.mjs'"
   },
