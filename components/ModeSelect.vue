@@ -40,6 +40,22 @@ const session = useGameSession()
           </p>
         </button>
       </div>
+
+      <!-- Solo rush -->
+      <button
+        class="group mt-4 flex w-full items-center gap-4 rounded-2xl border-2 border-arcade-gold/30
+               bg-arcade-gold/5 p-6 text-left transition-all hover:border-arcade-gold
+               hover:bg-arcade-gold/10"
+        @click="session.setMode('solo')"
+      >
+        <div class="text-3xl">🏃</div>
+        <div>
+          <div class="text-lg font-extrabold text-arcade-gold">Versus Self (Rush)</div>
+          <p class="mt-1 text-sm text-slate-400">
+            Solo challenge — chain as many words as you can and beat your best score.
+          </p>
+        </div>
+      </button>
     </div>
 
     <div class="mt-6">

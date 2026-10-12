@@ -4,6 +4,7 @@ import { useGameSession } from '~/composables/useGameSession'
 import ModeSelect from '~/components/ModeSelect.vue'
 import GameLobby from '~/components/GameLobby.vue'
 import OnlineLobby from '~/components/OnlineLobby.vue'
+import SoloLobby from '~/components/SoloLobby.vue'
 import GameBoard from '~/components/GameBoard.vue'
 import GameOverDialog from '~/components/GameOverDialog.vue'
 
@@ -14,15 +15,19 @@ const mode = computed(() => session.mode.value)
  * Routing:
  *  - no mode            -> ModeSelect
  *  - hotseat + lobby    -> GameLobby, else the board
+ *  - solo + lobby       -> SoloLobby, else the board
  *  - online + not yet in a live match -> OnlineLobby, else the board
  * The GameOver dialog overlays the board when phase === 'gameover'.
  */
-type Screen = 'mode' | 'hotseat-lobby' | 'online-lobby' | 'board'
+type Screen = 'mode' | 'hotseat-lobby' | 'solo-lobby' | 'online-lobby' | 'board'
 
 const screen = computed<Screen>(() => {
   if (mode.value === null) return 'mode'
   if (mode.value === 'hotseat') {
     return session.hotseat.state.phase === 'lobby' ? 'hotseat-lobby' : 'board'
+  }
+  if (mode.value === 'solo') {
+    return session.hotseat.state.phase === 'lobby' ? 'solo-lobby' : 'board'
   }
   // online: show the lobby until a match is actually underway.
   const p = session.online.state.server?.phase
@@ -50,6 +55,7 @@ const showGameOver = computed(() => session.phase.value === 'gameover')
     <main class="flex-1 px-4 pb-16">
       <ModeSelect v-if="screen === 'mode'" />
       <GameLobby v-else-if="screen === 'hotseat-lobby'" />
+      <SoloLobby v-else-if="screen === 'solo-lobby'" />
       <OnlineLobby v-else-if="screen === 'online-lobby'" />
       <GameBoard v-else />
       <GameOverDialog v-if="showGameOver" />

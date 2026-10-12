@@ -119,10 +119,18 @@ export function createWordMorph() {
     turnEndsAt: null as number | null,
     /** True while the dictionary for the chosen length is loading. */
     loading: false,
-    error: '' as string
+    error: '' as string,
+    /** Solo "Versus Self" rush mode (single player, beat your own best). */
+    solo: false,
+    /** Current run score = number of valid words chained (solo). */
+    score: 0,
+    /** Best score for the chosen length (solo), from localStorage. */
+    bestScore: 0,
+    /** True once the latest run beat the previous best. */
+    isNewBest: false
   })
 
-  // Client-side turn timer (hot-seat only). Cleared/reset at each turn.
+  // Client-side turn timer. Cleared/reset at each turn.
   let turnTimer: ReturnType<typeof setTimeout> | null = null
 
   function clearTurnTimer() {
@@ -141,11 +149,49 @@ export function createWordMorph() {
 
   function handleTimeout() {
     if (state.phase !== 'playing') return
-    // Current player ran out of time => they lose, opponent wins.
+    clearTurnTimer()
+    if (state.solo) {
+      // Solo rush: running out of time ends the run.
+      endSoloRun('timeout')
+      return
+    }
+    // Duel: current player ran out of time => opponent wins.
     state.lossReason = 'timeout'
     state.winner = opponentIndex.value
     state.phase = 'gameover'
+  }
+
+  /* -------------------- solo best-score persistence -------------------- */
+  function bestKey(len: WordLength) {
+    return `wordmorph:best:${len}`
+  }
+  function loadBest(len: WordLength): number {
+    if (typeof localStorage === 'undefined') return 0
+    const n = Number(localStorage.getItem(bestKey(len)))
+    return Number.isFinite(n) && n > 0 ? n : 0
+  }
+  function saveBest(len: WordLength, score: number) {
+    if (typeof localStorage === 'undefined') return
+    try {
+      localStorage.setItem(bestKey(len), String(score))
+    } catch {
+      /* ignore quota / privacy-mode errors */
+    }
+  }
+
+  /** End the current solo run, recording the best score. */
+  function endSoloRun(reason: LossReason) {
     clearTurnTimer()
+    state.lossReason = reason
+    state.winner = null
+    state.phase = 'gameover'
+    if (state.score > state.bestScore) {
+      state.bestScore = state.score
+      state.isNewBest = true
+      saveBest(state.length, state.score)
+    } else {
+      state.isNewBest = false
+    }
   }
 
   /* -------------------- derived -------------------- */
@@ -231,23 +277,28 @@ export function createWordMorph() {
   /**
    * Configure players + length and start a fresh match.
    * Loads the dictionary (idempotent) and seeds a random start word.
+   * Pass `solo: true` for the single-player "Versus Self" rush.
    */
   async function startGame(opts: {
     length: WordLength
     player1: string
-    player2: string
+    player2?: string
+    solo?: boolean
   }) {
     state.loading = true
     state.error = ''
     try {
       await loadDictionary(opts.length)
 
+      state.solo = !!opts.solo
       state.length = opts.length
       state.players = [
         { name: opts.player1.trim() || 'Player 1' },
-        { name: opts.player2.trim() || 'Player 2' }
+        { name: (opts.player2 ?? '').trim() || 'Player 2' }
       ]
-      rememberPlayers([state.players[0].name, state.players[1].name])
+      rememberPlayers(
+        state.solo ? [state.players[0].name] : [state.players[0].name, state.players[1].name]
+      )
 
       const start = pickStartWord(opts.length)
       state.chain = [{ word: start, by: null, changedIndex: null }]
@@ -256,6 +307,10 @@ export function createWordMorph() {
       state.winner = null
       state.lossReason = null
       state.phase = 'playing'
+      // Solo scoring resets each run; load the best for this length.
+      state.score = 0
+      state.isNewBest = false
+      state.bestScore = state.solo ? loadBest(opts.length) : 0
       armTurnTimer()
     } catch (e: unknown) {
       state.error =
@@ -265,12 +320,18 @@ export function createWordMorph() {
     }
   }
 
-  /** Rematch: same players + length, new random start word. */
+  /** Start a solo "Versus Self" rush. */
+  async function startSolo(opts: { length: WordLength; player1: string }) {
+    await startGame({ length: opts.length, player1: opts.player1, solo: true })
+  }
+
+  /** Rematch / play again: same settings, new random start word. */
   async function rematch() {
     await startGame({
       length: state.length,
       player1: state.players[0].name,
-      player2: state.players[1].name
+      player2: state.players[1].name,
+      solo: state.solo
     })
   }
 
@@ -282,6 +343,9 @@ export function createWordMorph() {
     state.lossReason = null
     state.chain = []
     state.used = new Set()
+    state.solo = false
+    state.score = 0
+    state.isNewBest = false
   }
 
   /* -------------------- validation (no mutation) -------------------- */
@@ -334,8 +398,13 @@ export function createWordMorph() {
     const result = validateMove(candidate)
 
     if (!result.ok) {
-      // Illegal move => current player loses, opponent wins.
       clearTurnTimer()
+      if (state.solo) {
+        // Solo rush: a wrong move ends the run.
+        endSoloRun(mapReasonToLoss(result.reason ?? ''))
+        return result
+      }
+      // Duel: illegal move => current player loses, opponent wins.
       state.lossReason = mapReasonToLoss(result.reason ?? '')
       state.winner = opponentIndex.value
       state.phase = 'gameover'
@@ -349,15 +418,25 @@ export function createWordMorph() {
       changedIndex: result.changedIndex ?? null
     })
     state.used.add(next)
-    state.current = opponentIndex.value
-    armTurnTimer()
+    if (state.solo) {
+      // Solo rush: you keep playing yourself — score one, re-arm the clock.
+      state.score += 1
+      armTurnTimer()
+    } else {
+      state.current = opponentIndex.value
+      armTurnTimer()
+    }
     return result
   }
 
-  /** Current player gives up; opponent wins. */
+  /** Current player gives up (duel) / ends the run (solo). */
   function resign() {
     if (state.phase !== 'playing') return
     clearTurnTimer()
+    if (state.solo) {
+      endSoloRun('resign')
+      return
+    }
     state.lossReason = 'resign'
     state.winner = opponentIndex.value
     state.phase = 'gameover'
@@ -380,6 +459,7 @@ export function createWordMorph() {
     turnNumber,
     // actions
     startGame,
+    startSolo,
     rematch,
     newGame,
     submitWord,
@@ -387,6 +467,7 @@ export function createWordMorph() {
     resign,
     // persistence
     loadRecentPlayers,
+    loadBest,
     // helpers
     singleDiffIndex
   }
