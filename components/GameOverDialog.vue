@@ -6,6 +6,8 @@ import WordChainHistory from '~/components/WordChainHistory.vue'
 
 const session = useGameSession()
 
+const isSolo = computed(() => session.mode.value === 'solo')
+
 const winner = computed(() => session.winner.value)
 const loser = computed<PlayerIndex | null>(() =>
   winner.value === null ? null : winner.value === 0 ? 1 : 0
@@ -19,6 +21,25 @@ const loserName = computed(() =>
 )
 
 const lastWord = computed(() => session.currentWord.value)
+
+/** Why the solo run ended (first-person, no opponent). */
+const soloReasonText = computed(() => {
+  const r = session.lossReason.value as LossReason | null
+  switch (r) {
+    case 'invalid-word':
+      return 'That word isn\u2019t in the dictionary.'
+    case 'not-single-change':
+      return 'That wasn\u2019t a single-letter change.'
+    case 'repeat':
+      return 'You\u2019d already used that word.'
+    case 'timeout':
+      return 'Time ran out!'
+    case 'resign':
+      return 'Run ended.'
+    default:
+      return 'Run over.'
+  }
+})
 
 const reasonText = computed(() => {
   const r = session.lossReason.value as LossReason | null
@@ -53,7 +74,26 @@ const winnerAccent = computed(() =>
     aria-label="Game over"
   >
     <div class="panel w-full max-w-xl animate-pop p-6 sm:p-8">
-      <div class="text-center">
+      <!-- Solo rush result -->
+      <div v-if="isSolo" class="text-center">
+        <div class="animate-float text-5xl">{{ session.isNewBest.value ? '🎉' : '🏁' }}</div>
+        <h2 class="mt-2 text-sm font-bold uppercase tracking-[0.3em] text-slate-400">
+          {{ session.isNewBest.value ? 'New best!' : 'Run over' }}
+        </h2>
+        <p class="text-5xl font-black text-arcade-gold tabular-nums">
+          {{ session.score.value }}
+        </p>
+        <p class="text-xs uppercase tracking-widest text-slate-500">words chained</p>
+        <p class="mt-3 text-sm text-slate-400">{{ soloReasonText }}</p>
+        <p class="mt-1 text-xs text-slate-500">
+          Best: <span class="font-bold text-slate-300">{{ session.bestScore.value }}</span>
+          · ended on
+          <span class="font-mono font-bold tracking-widest text-slate-300">{{ lastWord }}</span>
+        </p>
+      </div>
+
+      <!-- Duel result -->
+      <div v-else class="text-center">
         <div class="animate-float text-5xl">🏆</div>
         <h2 class="mt-2 text-sm font-bold uppercase tracking-[0.3em] text-slate-400">
           Winner
@@ -73,8 +113,12 @@ const winnerAccent = computed(() =>
       </div>
 
       <div class="mt-6 grid grid-cols-2 gap-3">
-        <button class="btn-gold" @click="session.rematch()">🔁 Rematch</button>
-        <button class="btn-ghost" @click="session.newGame()">🆕 New Game</button>
+        <button class="btn-gold" @click="session.rematch()">
+          {{ isSolo ? '🔁 Play Again' : '🔁 Rematch' }}
+        </button>
+        <button class="btn-ghost" @click="isSolo ? session.backToLobby() : session.newGame()">
+          {{ isSolo ? '🔙 Back to Lobby' : '🆕 New Game' }}
+        </button>
       </div>
     </div>
   </div>

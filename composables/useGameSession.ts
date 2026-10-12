@@ -12,7 +12,7 @@ import type { PlayerIndex, WordLength } from '~/composables/useOnlineGame'
  * not branch on mode.
  */
 
-export type GameMode = 'hotseat' | 'online'
+export type GameMode = 'hotseat' | 'online' | 'solo'
 
 /** Common normalised phase across both stores. */
 export type SessionPhase = 'lobby' | 'playing' | 'gameover'
@@ -46,7 +46,7 @@ function createSession() {
       if (!p) return 'lobby'
       return p === 'waiting' ? 'playing' : p
     }
-    if (session.mode === 'hotseat') {
+    if (session.mode === 'hotseat' || session.mode === 'solo') {
       return hotseat.state.phase as SessionPhase
     }
     return 'lobby'
@@ -146,6 +146,12 @@ function createSession() {
     session.mode === 'online' ? online.state.status : 'connected'
   )
 
+  /* -------------------- solo-specific -------------------- */
+  const isSolo = computed(() => session.mode === 'solo')
+  const score = computed(() => hotseat.state.score)
+  const bestScore = computed(() => hotseat.state.bestScore)
+  const isNewBest = computed(() => hotseat.state.isNewBest)
+
   /* -------------------- unified actions -------------------- */
 
   function submitWord(word: string) {
@@ -171,6 +177,16 @@ function createSession() {
       hotseat.newGame()
     }
     session.mode = null
+  }
+
+  /**
+   * Return to the CURRENT mode's lobby (not the mode-select home).
+   * Used by solo "Home" to go back to the Versus Self setup screen.
+   */
+  function backToLobby() {
+    const keep = session.mode
+    hotseat.newGame() // resets the hotseat store to its 'lobby' phase
+    session.mode = keep
   }
 
   return {
@@ -199,11 +215,17 @@ function createSession() {
     canPlay,
     waitingForOpponent,
     connStatus,
+    // solo
+    isSolo,
+    score,
+    bestScore,
+    isNewBest,
     // actions
     submitWord,
     rematch,
     resign,
-    newGame
+    newGame,
+    backToLobby
   }
 }
 

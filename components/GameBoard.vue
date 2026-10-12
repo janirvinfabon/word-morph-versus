@@ -11,6 +11,7 @@ const feedback = ref<{ ok: boolean; msg: string } | null>(null)
 const shake = ref(false)
 
 const isOnline = computed(() => session.mode.value === 'online')
+const isSolo = computed(() => session.mode.value === 'solo')
 const accent = computed<'p1' | 'p2'>(() => (session.current.value === 0 ? 'p1' : 'p2'))
 const inputDisabled = computed(() => !session.canPlay.value)
 
@@ -93,7 +94,24 @@ watch(
     <!-- Turn indicator + countdown -->
     <div class="panel p-4">
       <div class="flex items-center justify-between">
-        <div class="flex items-center gap-3">
+        <!-- Solo: score + best -->
+        <div v-if="isSolo" class="flex items-center gap-4">
+          <div>
+            <div class="text-xs uppercase tracking-widest text-slate-400">Streak</div>
+            <div class="text-2xl font-black text-arcade-gold tabular-nums">
+              {{ session.score.value }}
+            </div>
+          </div>
+          <div class="opacity-70">
+            <div class="text-xs uppercase tracking-widest text-slate-400">Best</div>
+            <div class="text-lg font-bold text-slate-300 tabular-nums">
+              {{ session.bestScore.value }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Duel: whose turn -->
+        <div v-else class="flex items-center gap-3">
           <span
             class="flex h-10 w-10 items-center justify-center rounded-full text-lg font-black text-slate-900"
             :class="accent === 'p1' ? 'bg-arcade-p1' : 'bg-arcade-p2'"
@@ -127,7 +145,9 @@ watch(
           >
             {{ secondsLeft }}
           </div>
-          <button class="btn-ghost text-xs" @click="session.resign()">Resign</button>
+          <button class="btn-ghost text-xs" @click="session.resign()">
+            {{ isSolo ? 'End' : 'Resign' }}
+          </button>
         </div>
       </div>
 
@@ -135,7 +155,15 @@ watch(
       <div v-if="msLeft !== null" class="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
         <div
           class="h-full rounded-full transition-[width] duration-100 ease-linear"
-          :class="low ? 'bg-arcade-bad' : accent === 'p1' ? 'bg-arcade-p1' : 'bg-arcade-p2'"
+          :class="
+            low
+              ? 'bg-arcade-bad'
+              : isSolo
+                ? 'bg-arcade-gold'
+                : accent === 'p1'
+                  ? 'bg-arcade-p1'
+                  : 'bg-arcade-p2'
+          "
           :style="{ width: pct + '%' }"
         />
       </div>
