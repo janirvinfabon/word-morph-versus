@@ -7,17 +7,27 @@ import type { WordLength } from '~/composables/useOnlineGame'
 
 const session = useGameSession()
 const online = session.online
+const wordMorph = useWordMorph()
 const config = useRuntimeConfig()
 const wsBase = config.public.wsUrl as string
 
 // Reuse the hot-seat recent-name persistence.
-const recentNames = useWordMorph().loadRecentPlayers()
+const recentNames = wordMorph.loadRecentPlayers()
 
 const name = ref(recentNames[0] ?? '')
 const codeInput = ref('')
 const length = ref<WordLength>(4)
 const busy = ref(false)
 const localError = ref('')
+
+/**
+ * Join a room and PERSIST the player's name (so it survives New Game / Back to
+ * the mode screen and pre-fills next time). All join paths go through here.
+ */
+function joinAndRemember(code: string) {
+  wordMorph.rememberPlayers([name.value])
+  online.joinRoom({ wsBase, room: code.toUpperCase(), name: name.value })
+}
 
 // Public "open rooms" browsing.
 interface OpenRoom {
@@ -45,7 +55,7 @@ async function refreshRooms() {
 
 function joinOpenRoom(code: string) {
   if (!validName()) return
-  online.joinRoom({ wsBase, room: code.toUpperCase(), name: name.value })
+  joinAndRemember(code)
 }
 
 // Whether this client has joined a room yet (server has sent state).
@@ -81,7 +91,7 @@ async function createRoom() {
   busy.value = true
   try {
     const code = await online.createRoomCode(wsBase)
-    online.joinRoom({ wsBase, room: code, name: name.value })
+    joinAndRemember(code)
   } catch (e) {
     localError.value = e instanceof Error ? e.message : 'Could not create room.'
   } finally {
@@ -96,7 +106,7 @@ function joinByCode() {
     localError.value = 'Room codes are 6 characters.'
     return
   }
-  online.joinRoom({ wsBase, room: code, name: name.value })
+  joinAndRemember(code)
 }
 
 function startMatch() {
