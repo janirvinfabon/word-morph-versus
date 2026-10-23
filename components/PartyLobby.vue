@@ -17,10 +17,11 @@ const wsBase = config.public.wsUrl as string
 
 const recentNames = wordMorph.loadRecentPlayers()
 const name = ref(recentNames[0] ?? '')
-const codeInput = ref('')
 const length = ref<WordLength>(4)
 const busy = ref(false)
 const localError = ref('')
+/** Party code from an invite link (?party=CODE), if any. */
+const invitedCode = ref('')
 
 /**
  * Join a party and PERSIST the player's name (so it survives New Game / Back to
@@ -102,14 +103,10 @@ async function createRoom() {
   }
 }
 
-function joinByCode() {
+/** Join the party from an invite link (?party=CODE). */
+function joinInvited() {
   if (!validName()) return
-  const code = codeInput.value.trim().toUpperCase()
-  if (code.length !== 6) {
-    localError.value = 'Room codes are 6 characters.'
-    return
-  }
-  joinAndRemember(code)
+  joinAndRemember(invitedCode.value)
 }
 
 function startMatch() {
@@ -142,7 +139,12 @@ function accentClasses(i: number): { border: string; text: string } {
 onMounted(() => {
   if (typeof window !== 'undefined') {
     const code = new URL(window.location.href).searchParams.get('party')
-    if (code) codeInput.value = code.toUpperCase()
+    if (code) {
+      invitedCode.value = code.toUpperCase()
+      if (name.value.trim()) {
+        joinAndRemember(invitedCode.value)
+      }
+    }
   }
   void refreshRooms()
 })
@@ -188,21 +190,16 @@ onMounted(() => {
           {{ busy ? 'Creating…' : '✨ Create a party' }}
         </button>
 
-        <div class="my-5 flex items-center gap-3 text-xs text-slate-500">
-          <span class="h-px flex-1 bg-white/10" /> OR <span class="h-px flex-1 bg-white/10" />
-        </div>
-
-        <div class="flex gap-2">
-          <input
-            v-model="codeInput"
-            maxlength="6"
-            placeholder="ENTER CODE"
-            class="w-full rounded-xl border-2 border-white/15 bg-arcade-bg/70 px-4 py-3 text-center
-                   font-mono text-lg font-bold uppercase tracking-[0.3em] text-slate-100 outline-none
-                   focus:border-arcade-p1 focus:ring-4 focus:ring-arcade-p1/30"
-            @input="codeInput = codeInput.toUpperCase()"
-          />
-          <button class="btn-primary whitespace-nowrap" @click="joinByCode">Join</button>
+        <!-- Invite link: join the shared party directly (no code entry needed) -->
+        <div
+          v-if="invitedCode"
+          class="mt-4 rounded-xl border border-arcade-p1/30 bg-arcade-p1/5 p-3 text-center"
+        >
+          <p class="text-xs text-slate-400">You were invited to party</p>
+          <p class="font-mono text-xl font-black tracking-[0.3em] text-arcade-gold">
+            {{ invitedCode }}
+          </p>
+          <button class="btn-primary mt-2 w-full" @click="joinInvited">Join this party</button>
         </div>
 
         <p v-if="localError || party.state.error" class="mt-4 text-center text-sm text-arcade-bad">
