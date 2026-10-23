@@ -170,6 +170,26 @@ async function main() {
   assert.equal(over1.state.lossReason, 'not-single-change')
   console.log('✓ illegal move ends game, opponent wins, both clients in sync')
 
+  // --- the failed word is recorded (red history) for the loser ---
+  const dfail = over1.state.failedAttempts?.at(-1)
+  assert.ok(dfail, 'duel records a failed attempt')
+  assert.equal(dfail.by, 1, 'failed attempt attributed to P2 (the loser)')
+  assert.equal(dfail.lossReason, 'not-single-change', 'failed reason recorded')
+  assert.ok(dfail.word.length > 0, 'the attempted bad word is captured')
+  console.log('✓ failed word recorded with player + reason for red history')
+
+  // --- missed words: what the loser could have played (non-resign loss) ---
+  assert.ok(over1.state.missedWords, 'missedWords present on a move-based loss')
+  assert.ok(
+    over1.state.missedWords.fromWord.length > 0,
+    'missedWords references the board word'
+  )
+  assert.ok(
+    over1.state.missedWords.words.length >= 1,
+    'at least one playable neighbor is suggested'
+  )
+  console.log('✓ missedWords lists at least one playable neighbor at game over')
+
   // --- rematch resets to playing, P1 to move ---
   p1.send({ type: 'rematch' })
   const re = await p1.next(

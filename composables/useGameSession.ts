@@ -1,18 +1,19 @@
 import { computed, reactive, readonly } from 'vue'
 import { useWordMorph } from '~/composables/useWordMorph'
 import { useOnlineGame } from '~/composables/useOnlineGame'
+import { usePartyGame } from '~/composables/usePartyGame'
 import type { PlayerIndex, WordLength } from '~/composables/useOnlineGame'
 
 /**
  * useGameSession — a single facade the game UI binds to, regardless of mode.
  *
- * It delegates to either the hot-seat singleton (useWordMorph) or the online
- * store (useOnlineGame) based on the currently selected mode, and normalises
- * their slightly different shapes into ONE common interface so components do
- * not branch on mode.
+ * It delegates to the hot-seat singleton (useWordMorph), the online duel store
+ * (useOnlineGame), or the party store (usePartyGame) based on the currently
+ * selected mode, and normalises their slightly different shapes into ONE common
+ * interface so components do not branch on mode.
  */
 
-export type GameMode = 'hotseat' | 'online' | 'solo'
+export type GameMode = 'hotseat' | 'online' | 'solo' | 'party'
 
 /** Common normalised phase across both stores. */
 export type SessionPhase = 'lobby' | 'playing' | 'gameover'
@@ -29,6 +30,7 @@ const session = reactive({
 function createSession() {
   const hotseat = useWordMorph()
   const online = useOnlineGame()
+  const party = usePartyGame()
 
   function setMode(mode: GameMode) {
     session.mode = mode
@@ -46,6 +48,11 @@ function createSession() {
       if (!p) return 'lobby'
       return p === 'waiting' ? 'playing' : p
     }
+    if (session.mode === 'party') {
+      const p = party.state.server?.phase
+      if (!p) return 'lobby'
+      return p === 'waiting' ? 'lobby' : p
+    }
     if (session.mode === 'hotseat' || session.mode === 'solo') {
       return hotseat.state.phase as SessionPhase
     }
@@ -53,11 +60,11 @@ function createSession() {
   })
 
   /* -------------------- normalised state fields -------------------- */
-  const length = computed<WordLength>(() =>
-    session.mode === 'online'
-      ? (online.state.server?.length ?? 4)
-      : (hotseat.state.length as WordLength)
-  )
+  const length = computed<WordLength>(() => {
+    if (session.mode === 'online') return (online.state.server?.length ?? 4) as WordLength
+    if (session.mode === 'party') return (party.state.server?.length ?? 4) as WordLength
+    return hotseat.state.length as WordLength
+  })
 
   const players = computed<NormalPlayer[]>(() => {
     if (session.mode === 'online') {
@@ -68,47 +75,92 @@ function createSession() {
         ]
       )
     }
+    if (session.mode === 'party') {
+      return (party.state.server?.players ?? []).map((p) => ({
+        name: p.name,
+        connected: p.connected
+      }))
+    }
     return hotseat.state.players.map((p) => ({ name: p.name, connected: true }))
   })
 
-  const current = computed<PlayerIndex>(() =>
-    session.mode === 'online'
-      ? (online.state.server?.current ?? 0)
-      : (hotseat.state.current as PlayerIndex)
-  )
+  /**
+   * Normalised "current player" index into `players`. For party mode we map
+   * the server's string `currentId` to its position in the roster so the
+   * shared GameBoard (which colours by index) keeps working.
+   */
+  const current = computed<PlayerIndex>(() => {
+    if (session.mode === 'online') return (online.state.server?.current ?? 0) as PlayerIndex
+    if (session.mode === 'party') {
+      const s = party.state.server
+      if (!s || !s.currentId) return 0 as PlayerIndex
+      const idx = s.players.findIndex((p) => p.id === s.currentId)
+      return (idx < 0 ? 0 : idx) as PlayerIndex
+    }
+    return hotseat.state.current as PlayerIndex
+  })
 
-  const chain = computed(() =>
-    session.mode === 'online'
-      ? (online.state.server?.chain ?? [])
-      : hotseat.state.chain
-  )
+  const chain = computed(() => {
+    if (session.mode === 'online') return online.state.server?.chain ?? []
+    if (session.mode === 'party') return party.state.server?.chain ?? []
+    return hotseat.state.chain
+  })
 
-  const winner = computed<PlayerIndex | null>(() =>
-    session.mode === 'online'
-      ? (online.state.server?.winner ?? null)
-      : (hotseat.state.winner as PlayerIndex | null)
-  )
+  /** Failed attempts (broken chain / timeout / resign) for red history entries. */
+  const failedAttempts = computed(() => {
+    if (session.mode === 'online') return online.state.server?.failedAttempts ?? []
+    if (session.mode === 'party') return party.state.server?.failedAttempts ?? []
+    return hotseat.state.failedAttempts
+  })
 
-  const lossReason = computed(() =>
-    session.mode === 'online'
-      ? (online.state.server?.lossReason ?? null)
-      : hotseat.state.lossReason
-  )
+  /** Moves the loser could have played, shown at game over (null if none/resign). */
+  const missedWords = computed(() => {
+    if (session.mode === 'online') return online.state.server?.missedWords ?? null
+    if (session.mode === 'party') return party.state.server?.missedWords ?? null
+    return hotseat.state.missedWords
+  })
 
-  const error = computed(() =>
-    session.mode === 'online' ? online.state.error : hotseat.state.error
-  )
+  const winner = computed<PlayerIndex | null>(() => {
+    if (session.mode === 'online') return (online.state.server?.winner ?? null) as PlayerIndex | null
+    if (session.mode === 'party') {
+      const s = party.state.server
+      if (!s || !s.winnerId) return null
+      const idx = s.players.findIndex((p) => p.id === s.winnerId)
+      return (idx < 0 ? null : idx) as PlayerIndex | null
+    }
+    return hotseat.state.winner as PlayerIndex | null
+  })
 
-  const roomCode = computed(() =>
-    session.mode === 'online' ? (online.state.server?.roomCode ?? '') : ''
-  )
+  const lossReason = computed(() => {
+    if (session.mode === 'online') return online.state.server?.lossReason ?? null
+    if (session.mode === 'party') {
+      // The decisive loss reason is the last-eliminated player's reason.
+      const s = party.state.server
+      if (!s) return null
+      const runnerUp = s.players.find((p) => p.placement === 2)
+      return runnerUp?.lossReason ?? null
+    }
+    return hotseat.state.lossReason
+  })
+
+  const error = computed(() => {
+    if (session.mode === 'online') return online.state.error
+    if (session.mode === 'party') return party.state.error
+    return hotseat.state.error
+  })
+
+  const roomCode = computed(() => {
+    if (session.mode === 'online') return online.state.server?.roomCode ?? ''
+    if (session.mode === 'party') return party.state.server?.roomCode ?? ''
+    return ''
+  })
 
   /** Epoch ms when the active player's turn ends, or null if not playing. */
-  const turnEndsAt = computed<number | null>(() =>
-    session.mode === 'online'
-      ? (online.state.server?.turnEndsAt ?? null)
-      : hotseat.state.turnEndsAt
-  )
+  const turnEndsAt = computed<number | null>(() => {
+    if (session.mode === 'online') return online.state.server?.turnEndsAt ?? null
+    if (session.mode === 'party') return party.state.server?.turnEndsAt ?? null
+    return hotseat.state.turnEndsAt
+  })
 
   /* -------------------- derived -------------------- */
   const currentWord = computed(() => {
@@ -131,20 +183,28 @@ function createSession() {
   const canPlay = computed(() => {
     if (phase.value !== 'playing') return false
     if (session.mode === 'online') return online.isMyTurn.value
+    if (session.mode === 'party') return party.isMyTurn.value
     return true
   })
 
-  /** Online-only: is the local client still waiting for an opponent? */
-  const waitingForOpponent = computed(
-    () =>
-      session.mode === 'online' &&
-      (online.state.server?.phase === 'waiting' ||
-        !online.bothConnected.value)
-  )
+  /** Online/party-only: is the local client still waiting to begin? */
+  const waitingForOpponent = computed(() => {
+    if (session.mode === 'online') {
+      return (
+        online.state.server?.phase === 'waiting' || !online.bothConnected.value
+      )
+    }
+    if (session.mode === 'party') {
+      return party.state.server?.phase === 'waiting'
+    }
+    return false
+  })
 
-  const connStatus = computed(() =>
-    session.mode === 'online' ? online.state.status : 'connected'
-  )
+  const connStatus = computed(() => {
+    if (session.mode === 'online') return online.state.status
+    if (session.mode === 'party') return party.state.status
+    return 'connected'
+  })
 
   /* -------------------- solo-specific -------------------- */
   const isSolo = computed(() => session.mode === 'solo')
@@ -156,16 +216,19 @@ function createSession() {
 
   function submitWord(word: string) {
     if (session.mode === 'online') online.submitWord(word)
+    else if (session.mode === 'party') party.submitWord(word)
     else hotseat.submitWord(word)
   }
 
   function rematch() {
     if (session.mode === 'online') online.rematch()
+    else if (session.mode === 'party') party.rematch()
     else void hotseat.rematch()
   }
 
   function resign() {
     if (session.mode === 'online') online.resign()
+    else if (session.mode === 'party') party.resign()
     else hotseat.resign()
   }
 
@@ -173,6 +236,8 @@ function createSession() {
   function newGame() {
     if (session.mode === 'online') {
       online.leave()
+    } else if (session.mode === 'party') {
+      party.leave()
     } else {
       hotseat.newGame()
     }
@@ -197,12 +262,15 @@ function createSession() {
     // direct access to underlying stores for the lobbies
     hotseat,
     online,
+    party,
     // normalised state
     phase,
     length,
     players,
     current,
     chain,
+    failedAttempts,
+    missedWords,
     winner,
     lossReason,
     error,

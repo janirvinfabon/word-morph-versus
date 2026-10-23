@@ -89,6 +89,44 @@ export function hasAnyNeighbor(word, dict) {
   return false
 }
 
+/**
+ * Collect valid single-letter neighbors of `word` present in `dict`.
+ *
+ * Ensures a non-empty result whenever the board word has ANY dictionary
+ * neighbor (guaranteed by dead-end pruning + pickStartWord): it first gathers
+ * neighbors NOT already played; if that is empty (every option was a repeat),
+ * it falls back to including used words so the caller can still explain the
+ * situation rather than show nothing. Results are returned in position order
+ * and capped at `limit` (default 6).
+ *
+ * @returns { words: string[], allUsed: boolean } — `allUsed` is true when the
+ *   only neighbors that exist were already played (so none were legal moves).
+ */
+export function findNeighbors(word, dict, used, limit = 6) {
+  const unused = []
+  const usedHits = []
+  const chars = word.split('')
+  for (let i = 0; i < chars.length; i++) {
+    const orig = chars[i]
+    for (let c = 65; c <= 90; c++) {
+      const ch = String.fromCharCode(c)
+      if (ch === orig) continue
+      chars[i] = ch
+      const cand = chars.join('')
+      if (dict.has(cand)) {
+        if (used && used.has(cand)) usedHits.push(cand)
+        else unused.push(cand)
+      }
+    }
+    chars[i] = orig
+  }
+  if (unused.length > 0) {
+    return { words: unused.slice(0, limit), allUsed: false }
+  }
+  // No fresh neighbor: fall back to the already-played ones (if any exist).
+  return { words: usedHits.slice(0, limit), allUsed: usedHits.length > 0 }
+}
+
 /** Pick a random start word that is guaranteed to have at least one legal move. */
 export function pickStartWord(list, dict) {
   for (let attempt = 0; attempt < 50; attempt++) {

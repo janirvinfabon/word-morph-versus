@@ -20,6 +20,32 @@ export interface ChainEntry {
   changedIndex: number | null
 }
 
+/**
+ * A FAILED attempt — a move that broke the chain (bad word, not a single
+ * change, repeat), or a turn lost to timeout/resign. Rendered in red in the
+ * history. It never enters the valid chain or the `used` set.
+ */
+export interface FailedEntry {
+  /** The word the player tried, or '' for wordless failures (timeout/resign). */
+  word: string
+  /** Which player failed (index into players). */
+  by: PlayerIndex | null
+  /** Changed-letter index to highlight, when there is a word to show. */
+  changedIndex: number | null
+  /** Why it failed. */
+  lossReason: LossReason
+}
+
+/**
+ * What the loser could have played — valid single-letter neighbors of the last
+ * board word. Shown at game over for every loss EXCEPT resign; null otherwise.
+ */
+export interface MissedWords {
+  fromWord: string
+  words: string[]
+  allUsed: boolean
+}
+
 export interface MoveResult {
   ok: boolean
   /** Human-readable reason when ok === false. */
@@ -110,6 +136,10 @@ export function createWordMorph() {
     current: 0 as PlayerIndex,
     /** The ordered chain of played words (index 0 = system start word). */
     chain: [] as ChainEntry[],
+    /** Failed attempts (broken chain / timeout / resign), rendered in red. */
+    failedAttempts: [] as FailedEntry[],
+    /** Moves the loser could have played, shown at game over (null = none). */
+    missedWords: null as MissedWords | null,
     /** Set of words already used this match (uppercase). */
     used: new Set<string>(),
     /** Winner index once the game is over, else null. */
@@ -150,6 +180,9 @@ export function createWordMorph() {
   function handleTimeout() {
     if (state.phase !== 'playing') return
     clearTurnTimer()
+    // Wordless failure: record a timeout marker for the active player.
+    recordFailure({ word: '', by: state.current, lossReason: 'timeout' })
+    computeMissedWords()
     if (state.solo) {
       // Solo rush: running out of time ends the run.
       endSoloRun('timeout')
@@ -302,6 +335,8 @@ export function createWordMorph() {
 
       const start = pickStartWord(opts.length)
       state.chain = [{ word: start, by: null, changedIndex: null }]
+      state.failedAttempts = []
+      state.missedWords = null
       state.used = new Set([start])
       state.current = 0
       state.winner = null
@@ -342,10 +377,84 @@ export function createWordMorph() {
     state.winner = null
     state.lossReason = null
     state.chain = []
+    state.failedAttempts = []
+    state.missedWords = null
     state.used = new Set()
     state.solo = false
     state.score = 0
     state.isNewBest = false
+  }
+
+  /**
+   * Best-effort changed-letter index for a FAILED word, for highlighting.
+   * Returns the single changed position when there is exactly one; otherwise
+   * the first differing position; or null when there's nothing meaningful
+   * (wordless failure or equal/empty word).
+   */
+  function failedChangedIndex(candidate: string): number | null {
+    const cur = currentWord.value
+    const next = (candidate ?? '').toUpperCase()
+    if (!next) return null
+    const single = singleDiffIndex(cur, next)
+    if (single >= 0) return single
+    // Multi-change / wrong length: highlight the first position that differs.
+    const n = Math.min(cur.length, next.length)
+    for (let i = 0; i < n; i++) {
+      if (cur[i] !== next[i]) return i
+    }
+    // Same prefix but different length (e.g. trailing extra/missing letters).
+    return n < next.length || n < cur.length ? n : null
+  }
+
+  /** Record a failed attempt so the history can show it in red. */
+  function recordFailure(opts: {
+    word: string
+    by: PlayerIndex | null
+    lossReason: LossReason
+  }) {
+    state.failedAttempts.push({
+      word: opts.word.toUpperCase(),
+      by: opts.by,
+      changedIndex: opts.word ? failedChangedIndex(opts.word) : null,
+      lossReason: opts.lossReason
+    })
+  }
+
+  /**
+   * Compute the moves the loser could have played (valid neighbors of the last
+   * board word), for the game-over screen. Prefers unused words; falls back to
+   * already-used ones so the result explains "only repeats were left". Capped.
+   */
+  function computeMissedWords(limit = 6) {
+    const fromWord = currentWord.value
+    const set = dictCache.get(state.length)
+    if (!fromWord || !set) {
+      state.missedWords = null
+      return
+    }
+    const unused: string[] = []
+    const usedHits: string[] = []
+    const chars = fromWord.split('')
+    for (let i = 0; i < chars.length; i++) {
+      const orig = chars[i]
+      for (let c = 65; c <= 90; c++) {
+        const ch = String.fromCharCode(c)
+        if (ch === orig) continue
+        chars[i] = ch
+        const cand = chars.join('')
+        if (set.has(cand)) {
+          if (state.used.has(cand)) usedHits.push(cand)
+          else unused.push(cand)
+        }
+      }
+      chars[i] = orig
+    }
+    const words = unused.length ? unused.slice(0, limit) : usedHits.slice(0, limit)
+    state.missedWords = {
+      fromWord,
+      words,
+      allUsed: unused.length === 0 && usedHits.length > 0
+    }
   }
 
   /* -------------------- validation (no mutation) -------------------- */
@@ -399,6 +508,13 @@ export function createWordMorph() {
 
     if (!result.ok) {
       clearTurnTimer()
+      // Record the failed word (shown in red in the history) before ending.
+      recordFailure({
+        word: candidate,
+        by: state.current,
+        lossReason: mapReasonToLoss(result.reason ?? '')
+      })
+      computeMissedWords()
       if (state.solo) {
         // Solo rush: a wrong move ends the run.
         endSoloRun(mapReasonToLoss(result.reason ?? ''))
@@ -433,6 +549,8 @@ export function createWordMorph() {
   function resign() {
     if (state.phase !== 'playing') return
     clearTurnTimer()
+    // Wordless failure: record a resign marker for the active player.
+    recordFailure({ word: '', by: state.current, lossReason: 'resign' })
     if (state.solo) {
       endSoloRun('resign')
       return

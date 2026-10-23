@@ -23,12 +23,25 @@ export interface ChainEntry {
   by: PlayerIndex | null
   changedIndex: number | null
 }
+export interface FailedEntry {
+  word: string
+  by: PlayerIndex | null
+  changedIndex: number | null
+  lossReason: LossReason
+}
+export interface MissedWords {
+  fromWord: string
+  words: string[]
+  allUsed: boolean
+}
 export interface GameState {
   phase: Phase
   length: WordLength
   players: PlayerPublic[]
   current: PlayerIndex
   chain: ChainEntry[]
+  failedAttempts: FailedEntry[]
+  missedWords: MissedWords | null
   winner: PlayerIndex | null
   lossReason: LossReason | null
   roomCode: string
