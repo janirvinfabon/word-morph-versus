@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path'
 
 // gameLogic is authored as plain ESM (.mjs) so the Worker bundle and these
 // Node tests share one implementation — no transpile step, no duplicate logic.
-import { singleDiffIndex, validateMove } from '../src/gameLogic.mjs'
+import { singleDiffIndex, validateMove, findNeighbors } from '../src/gameLogic.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const words4 = new Set(
@@ -76,3 +76,52 @@ test('validateMove: wrong length => not-single-change', () => {
   assert.equal(r.ok, false)
   assert.equal(r.loss, 'not-single-change')
 })
+
+test('findNeighbors: returns valid single-letter neighbors (unused preferred)', () => {
+  const { words, allUsed } = findNeighbors('FALL', words4, new Set(['FALL']))
+  assert.ok(words.length > 0, 'FALL has neighbors in the dictionary')
+  assert.equal(allUsed, false)
+  for (const w of words) {
+    assert.ok(words4.has(w), `${w} is a real word`)
+    assert.equal(
+      singleDiffIndex('FALL', w) >= 0,
+      true,
+      `${w} is a single-letter change from FALL`
+    )
+  }
+})
+
+test('findNeighbors: excludes already-used words', () => {
+  // Find a real neighbor of FALL, mark it used, and confirm it is excluded.
+  const first = findNeighbors('FALL', words4, new Set(['FALL'])).words[0]
+  const { words } = findNeighbors('FALL', words4, new Set(['FALL', first]))
+  assert.ok(!words.includes(first), 'used neighbor is excluded from suggestions')
+})
+
+test('findNeighbors: falls back to used neighbors when none are fresh', () => {
+  // Mark FALL + ALL its neighbors as used; the fallback should list them and
+  // flag allUsed = true rather than returning empty.
+  const all = findNeighbors('FALL', words4, new Set(['FALL'])).words
+  const used = new Set(['FALL', ...findNeighborsAll('FALL', words4)])
+  const { words, allUsed } = findNeighbors('FALL', words4, used)
+  assert.equal(allUsed, true, 'allUsed is true when only repeats remain')
+  assert.ok(words.length > 0, 'fallback still returns the (used) neighbors')
+})
+
+/** Helper: every dictionary neighbor of a word (for the fallback test). */
+function findNeighborsAll(word, dict) {
+  const out = []
+  const chars = word.split('')
+  for (let i = 0; i < chars.length; i++) {
+    const orig = chars[i]
+    for (let c = 65; c <= 90; c++) {
+      const ch = String.fromCharCode(c)
+      if (ch === orig) continue
+      chars[i] = ch
+      const cand = chars.join('')
+      if (dict.has(cand)) out.push(cand)
+    }
+    chars[i] = orig
+  }
+  return out
+}

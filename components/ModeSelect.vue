@@ -39,23 +39,37 @@ const session = useGameSession()
             Create a room, share the code or link, and duel in real time.
           </p>
         </button>
-      </div>
 
-      <!-- Solo rush -->
-      <button
-        class="group mt-4 flex w-full items-center gap-4 rounded-2xl border-2 border-arcade-gold/30
-               bg-arcade-gold/5 p-6 text-left transition-all hover:border-arcade-gold
-               hover:bg-arcade-gold/10"
-        @click="session.setMode('solo')"
-      >
-        <div class="text-3xl">🏃</div>
-        <div>
-          <div class="text-lg font-extrabold text-arcade-gold">Versus Self (Rush)</div>
+        <!-- Party (3-10 players) -->
+        <button
+          class="group rounded-2xl border-2 border-arcade-p2/30 bg-gradient-to-br from-arcade-p1/5
+                 to-arcade-p2/5 p-6 text-left transition-all hover:border-arcade-p2
+                 hover:from-arcade-p1/10 hover:to-arcade-p2/10"
+          @click="session.setMode('party')"
+        >
+          <div class="text-3xl">🎉</div>
+          <div class="mt-2 text-lg font-extrabold">
+            <span class="text-arcade-p1">Party</span>
+            <span class="text-slate-300"> (3–10)</span>
+          </div>
+          <p class="mt-1 text-sm text-slate-400">
+            Last word-smith standing. Break the chain and you're out — survive to win.
+          </p>
+        </button>
+
+        <!-- Solo rush -->
+        <button
+          class="group rounded-2xl border-2 border-arcade-gold/30 bg-arcade-gold/5 p-6 text-left
+                 transition-all hover:border-arcade-gold hover:bg-arcade-gold/10"
+          @click="session.setMode('solo')"
+        >
+          <div class="text-3xl">🏃</div>
+          <div class="mt-2 text-lg font-extrabold text-arcade-gold">Versus Self (Rush)</div>
           <p class="mt-1 text-sm text-slate-400">
             Solo challenge — chain as many words as you can and beat your best score.
           </p>
-        </div>
-      </button>
+        </button>
+      </div>
     </div>
 
     <div class="mt-6">

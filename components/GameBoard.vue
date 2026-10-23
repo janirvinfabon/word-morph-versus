@@ -11,9 +11,16 @@ const feedback = ref<{ ok: boolean; msg: string } | null>(null)
 const shake = ref(false)
 
 const isOnline = computed(() => session.mode.value === 'online')
+const isParty = computed(() => session.mode.value === 'party')
 const isSolo = computed(() => session.mode.value === 'solo')
-const accent = computed<'p1' | 'p2'>(() => (session.current.value === 0 ? 'p1' : 'p2'))
+/** Server-authoritative modes submit moves to the Worker and wait for state. */
+const isServerMode = computed(() => isOnline.value || isParty.value)
+const accent = computed<'p1' | 'p2'>(() => (session.current.value % 2 === 0 ? 'p1' : 'p2'))
 const inputDisabled = computed(() => !session.canPlay.value)
+
+/** Party roster with elimination info, for the player strip. */
+const partyPlayers = computed(() => session.party.state.server?.players ?? [])
+const youEliminated = computed(() => isParty.value && session.party.youEliminated.value)
 
 /* -------------------- countdown -------------------- */
 // `now` ticks every 100ms so the countdown bar animates smoothly.
@@ -54,15 +61,15 @@ function onSubmit(word: string) {
     }
     return
   }
-  // Online: server validates and broadcasts the result.
+  // Online / party: server validates and broadcasts the result.
   session.submitWord(upper)
 }
 
-// Surface server-side errors (online) as feedback.
+// Surface server-side errors (online + party) as feedback.
 watch(
-  () => session.online.state.error,
+  () => session.error.value,
   (err) => {
-    if (isOnline.value && err) {
+    if (isServerMode.value && err) {
       feedback.value = { ok: false, msg: err }
       shake.value = true
       setTimeout(() => (shake.value = false), 500)
@@ -89,6 +96,46 @@ watch(
       <span class="h-2 w-2 animate-pulse rounded-full bg-arcade-gold" />
       <span v-if="session.connStatus.value === 'reconnecting'">Reconnecting…</span>
       <span v-else>Waiting for your opponent to connect…</span>
+    </div>
+
+    <!-- Party player strip: all seats, active highlighted, eliminated dimmed -->
+    <div v-if="isParty" class="panel p-3">
+      <div class="flex flex-wrap items-center justify-center gap-2">
+        <span
+          v-for="(p, i) in partyPlayers"
+          :key="p.id"
+          class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold
+                 transition-all"
+          :class="[
+            p.eliminated
+              ? 'border-white/10 text-slate-500 line-through'
+              : session.party.state.server?.currentId === p.id
+                ? 'border-arcade-gold bg-arcade-gold/10 text-arcade-gold'
+                : 'border-white/15 text-slate-200',
+            !p.connected && !p.eliminated ? 'opacity-50' : ''
+          ]"
+          :title="
+            p.eliminated
+              ? `Out (${p.lossReason})`
+              : p.connected
+                ? 'Playing'
+                : 'Disconnected'
+          "
+        >
+          <span
+            v-if="session.party.state.server?.currentId === p.id && !p.eliminated"
+            class="h-1.5 w-1.5 animate-pulse rounded-full bg-arcade-gold"
+          />
+          {{ p.name }}{{ session.party.state.you === p.id ? ' (you)' : '' }}
+          <span v-if="p.eliminated" aria-hidden="true">💀</span>
+        </span>
+      </div>
+      <p
+        v-if="youEliminated"
+        class="mt-2 text-center text-xs font-bold uppercase tracking-widest text-arcade-bad"
+      >
+        You're out — spectating until a winner is crowned
+      </p>
     </div>
 
     <!-- Turn indicator + countdown -->
@@ -120,7 +167,7 @@ watch(
           </span>
           <div>
             <div class="text-xs uppercase tracking-widest text-slate-400">
-              {{ isOnline && session.canPlay.value ? 'Your turn' : 'Waiting on' }}
+              {{ isServerMode && session.canPlay.value ? 'Your turn' : 'Waiting on' }}
             </div>
             <div
               class="text-lg font-extrabold"
@@ -193,13 +240,17 @@ watch(
         <span v-if="feedback" :class="feedback.ok ? 'text-arcade-good' : 'text-arcade-bad'">
           {{ feedback.msg }}
         </span>
-        <span v-else-if="isOnline && !session.canPlay.value" class="text-slate-500">
-          Waiting on {{ session.currentPlayer.value.name }}…
+        <span v-else-if="isServerMode && !session.canPlay.value" class="text-slate-500">
+          {{ youEliminated ? 'You are out of this round.' : `Waiting on ${session.currentPlayer.value.name}…` }}
         </span>
       </div>
     </div>
 
     <!-- History -->
-    <WordChainHistory :chain="session.chain.value" :players="session.players.value" />
+    <WordChainHistory
+      :chain="session.chain.value"
+      :players="session.players.value"
+      :failed-attempts="session.failedAttempts.value"
+    />
   </div>
 </template>

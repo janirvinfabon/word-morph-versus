@@ -18,6 +18,11 @@ export interface RoomEntry {
   hostName: string
   length: WordLength
   createdAt: number
+  /** 'party' for 3-10 player rooms; absent/undefined for 2-player duels. */
+  mode?: 'duel' | 'party'
+  /** Party only: current roster size and the cap, for "N/10" displays. */
+  playerCount?: number
+  maxPlayers?: number
 }
 
 /** Stale entries older than this (ms) are dropped from listings. */
@@ -62,7 +67,10 @@ export class LobbyRegistry extends DurableObject {
       code: entry.code,
       hostName: entry.hostName,
       length: entry.length,
-      createdAt: entry.createdAt || Date.now()
+      createdAt: entry.createdAt || Date.now(),
+      mode: entry.mode ?? 'duel',
+      playerCount: entry.playerCount,
+      maxPlayers: entry.maxPlayers
     } satisfies RoomEntry)
   }
 

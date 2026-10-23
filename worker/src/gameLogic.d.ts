@@ -30,4 +30,18 @@ export function validateMove(
 
 export function hasAnyNeighbor(word: string, dict: Set<string>): boolean
 
+export interface NeighborResult {
+  /** Valid single-letter neighbors (capped), preferring unused words. */
+  words: string[]
+  /** True when the only neighbors that exist were already played. */
+  allUsed: boolean
+}
+
+export function findNeighbors(
+  word: string,
+  dict: Set<string>,
+  used: Set<string>,
+  limit?: number
+): NeighborResult
+
 export function pickStartWord(list: string[], dict: Set<string>): string

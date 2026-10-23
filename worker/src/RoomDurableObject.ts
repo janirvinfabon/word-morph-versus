@@ -2,9 +2,9 @@
 import { DurableObject } from 'cloudflare:workers'
 
 // @ts-expect-error — plain ESM module with a sibling .d.ts
-import { validateMove, pickStartWord, TURN_MS } from './gameLogic.mjs'
+import { validateMove, pickStartWord, singleDiffIndex, findNeighbors, TURN_MS } from './gameLogic.mjs'
 import type { LossReason, PlayerIndex, WordLength } from './gameLogic'
-import type { ChainEntry, ClientMsg, GameState, ServerMsg } from './protocol'
+import type { ChainEntry, ClientMsg, FailedEntry, GameState, MissedWords, ServerMsg } from './protocol'
 
 import words4 from './words/words-4.json'
 import words5 from './words/words-5.json'
@@ -49,6 +49,10 @@ interface PersistedState {
   current: PlayerIndex
   chain: ChainEntry[]
   used: string[]
+  /** Failed attempts (broken chain / timeout / resign), for red history. */
+  failedAttempts: FailedEntry[]
+  /** Missed moves for the decisive loss (game over only), else null. */
+  missedWords: MissedWords | null
   winner: PlayerIndex | null
   lossReason: LossReason | null
   /** Epoch ms when the current turn times out (playing only), else null. */
@@ -96,6 +100,8 @@ export class RoomDurableObject extends DurableObject<Env> {
       current: 0,
       chain: [],
       used: [],
+      failedAttempts: [],
+      missedWords: null,
       winner: null,
       lossReason: null,
       turnEndsAt: null
@@ -120,6 +126,53 @@ export class RoomDurableObject extends DurableObject<Env> {
   /** Begin the current player's turn clock. */
   private armTurn() {
     this.state.turnEndsAt = Date.now() + TURN_MS
+  }
+
+  /**
+   * Best-effort changed-letter index for a FAILED word (for highlighting):
+   * the single changed position if there is one, else the first differing
+   * position, else null (wordless/empty).
+   */
+  private failedChangedIndex(candidate: string): number | null {
+    const cur = this.state.chain[this.state.chain.length - 1]?.word ?? ''
+    const next = (candidate ?? '').toUpperCase()
+    if (!next) return null
+    const single = singleDiffIndex(cur, next) as number
+    if (single >= 0) return single
+    const n = Math.min(cur.length, next.length)
+    for (let i = 0; i < n; i++) {
+      if (cur[i] !== next[i]) return i
+    }
+    return n < next.length || n < cur.length ? n : null
+  }
+
+  /** Append a failed attempt so clients can render it in red. */
+  private recordFailure(word: string, by: PlayerIndex, loss: LossReason) {
+    this.state.failedAttempts.push({
+      word: (word ?? '').toUpperCase(),
+      by,
+      changedIndex: word ? this.failedChangedIndex(word) : null,
+      lossReason: loss
+    })
+  }
+
+  /**
+   * Compute the moves the loser could have played (valid neighbors of the last
+   * board word), to show at game over. Skipped for resign.
+   */
+  private computeMissedWords() {
+    const fromWord = this.state.chain[this.state.chain.length - 1]?.word ?? ''
+    if (!fromWord) {
+      this.state.missedWords = null
+      return
+    }
+    const used = new Set(this.state.used)
+    const { words, allUsed } = findNeighbors(
+      fromWord,
+      WORD_SETS[this.state.length],
+      used
+    ) as { words: string[]; allUsed: boolean }
+    this.state.missedWords = { fromWord, words, allUsed }
   }
 
   /* --------------------------- registry sync --------------------------- */
@@ -291,6 +344,8 @@ export class RoomDurableObject extends DurableObject<Env> {
     this.state.length = len
     this.state.chain = [{ word: start, by: null, changedIndex: null }]
     this.state.used = [start]
+    this.state.failedAttempts = []
+    this.state.missedWords = null
     this.state.current = 0
     this.state.winner = null
     this.state.lossReason = null
@@ -323,6 +378,12 @@ export class RoomDurableObject extends DurableObject<Env> {
 
     if (!result.ok) {
       // Illegal move => this player loses, opponent wins.
+      this.recordFailure(
+        word,
+        meta.index,
+        (result.loss ?? 'invalid-word') as LossReason
+      )
+      this.computeMissedWords()
       this.state.winner = (meta.index === 0 ? 1 : 0) as PlayerIndex
       this.state.lossReason = (result.loss ?? 'invalid-word') as LossReason
       this.state.phase = 'gameover'
@@ -359,6 +420,8 @@ export class RoomDurableObject extends DurableObject<Env> {
     const start = pickStartWord(START_LISTS[len], WORD_SETS[len])
     this.state.chain = [{ word: start, by: null, changedIndex: null }]
     this.state.used = [start]
+    this.state.failedAttempts = []
+    this.state.missedWords = null
     this.state.current = 0
     this.state.winner = null
     this.state.lossReason = null
@@ -373,6 +436,7 @@ export class RoomDurableObject extends DurableObject<Env> {
     const meta = this.sessions.get(ws)
     if (!meta || meta.index === null) return
     if (this.state.phase !== 'playing') return
+    this.recordFailure('', meta.index, 'resign')
     this.state.winner = (meta.index === 0 ? 1 : 0) as PlayerIndex
     this.state.lossReason = 'resign'
     this.state.phase = 'gameover'
@@ -420,6 +484,8 @@ export class RoomDurableObject extends DurableObject<Env> {
       })),
       current: this.state.current,
       chain: this.state.chain,
+      failedAttempts: this.state.failedAttempts,
+      missedWords: this.state.missedWords,
       winner: this.state.winner,
       lossReason: this.state.lossReason,
       roomCode: this.state.roomCode,
@@ -452,6 +518,8 @@ export class RoomDurableObject extends DurableObject<Env> {
       this.state.turnEndsAt !== null &&
       Date.now() >= this.state.turnEndsAt
     ) {
+      this.recordFailure('', this.state.current, 'timeout')
+      this.computeMissedWords()
       this.state.winner = (this.state.current === 0 ? 1 : 0) as PlayerIndex
       this.state.lossReason = 'timeout'
       this.state.phase = 'gameover'
