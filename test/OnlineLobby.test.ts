@@ -120,32 +120,41 @@ describe('OnlineLobby', () => {
     expect((link.element as HTMLInputElement).value).toContain(`room=${CODE}`)
   })
 
-  it('join rejects a code that is not 6 characters', async () => {
-    const Comp = await loadComponent()
-    const wrapper = mount(Comp)
-    await wrapper.find('input').setValue('Bob')
-
-    const inputs = wrapper.findAll('input')
-    const codeInput = inputs[inputs.length - 1]
-    await codeInput.setValue('ABC') // too short
-
-    const joinBtn = wrapper.findAll('button').find((b) => b.text() === 'Join')!
-    await joinBtn.trigger('click')
-    await flushPromises()
-
-    expect(wrapper.text()).toMatch(/6 characters/i)
-    expect(MockWebSocket.instances.length).toBe(0) // never connected
-  })
-
-  it('prefills the code input from a ?room= URL', async () => {
+  it('shows an invited-room panel and joins it from a ?room= URL', async () => {
     window.history.replaceState({}, '', '/?room=ZZZZ99')
     const Comp = await loadComponent()
     const wrapper = mount(Comp)
     await flushPromises()
 
-    const inputs = wrapper.findAll('input')
-    const codeInput = inputs[inputs.length - 1]
-    expect((codeInput.element as HTMLInputElement).value).toBe('ZZZZ99')
+    // The invite code is surfaced with a dedicated join button (no code entry).
+    expect(wrapper.text()).toContain('ZZZZ99')
+    await wrapper.find('input').setValue('Bob')
+    const joinBtn = wrapper
+      .findAll('button')
+      .find((b) => /join this room/i.test(b.text()))!
+    await joinBtn.trigger('click')
+    await flushPromises()
+
+    const sock = MockWebSocket.instances[0]
+    expect(sock.url).toContain('room=ZZZZ99')
+  })
+
+  it('auto-joins an invite link immediately when a name is already known', async () => {
+    // A recent name is persisted, so the invite link should connect on mount.
+    // (loadRecentPlayers reads localStorage; seed it before loading.)
+    window.localStorage.setItem(
+      'wordmorph:recent-players',
+      JSON.stringify(['Alice'])
+    )
+    window.history.replaceState({}, '', '/?room=YYYY88')
+    const Comp = await loadComponent()
+    mount(Comp)
+    await flushPromises()
+
+    const sock = MockWebSocket.instances[0]
+    expect(sock).toBeTruthy()
+    expect(sock.url).toContain('room=YYYY88')
+    window.localStorage.clear()
   })
 
   it('renders open rooms fetched on mount and joins one on click', async () => {
