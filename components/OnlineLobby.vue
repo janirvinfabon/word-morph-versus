@@ -7,17 +7,28 @@ import type { WordLength } from '~/composables/useOnlineGame'
 
 const session = useGameSession()
 const online = session.online
+const wordMorph = useWordMorph()
 const config = useRuntimeConfig()
 const wsBase = config.public.wsUrl as string
 
 // Reuse the hot-seat recent-name persistence.
-const recentNames = useWordMorph().loadRecentPlayers()
+const recentNames = wordMorph.loadRecentPlayers()
 
 const name = ref(recentNames[0] ?? '')
-const codeInput = ref('')
 const length = ref<WordLength>(4)
 const busy = ref(false)
 const localError = ref('')
+
+/**
+ * Join a room and PERSIST the player's name (so it survives New Game / Back to
+ * the mode screen and pre-fills next time). All join paths go through here.
+ */
+function joinAndRemember(code: string) {
+  wordMorph.rememberPlayers([name.value])
+  online.joinRoom({ wsBase, room: code.toUpperCase(), name: name.value })
+}
+/** Room code from an invite link (?room=CODE), if any. */
+const invitedCode = ref('')
 
 // Public "open rooms" browsing.
 interface OpenRoom {
@@ -45,7 +56,7 @@ async function refreshRooms() {
 
 function joinOpenRoom(code: string) {
   if (!validName()) return
-  online.joinRoom({ wsBase, room: code.toUpperCase(), name: name.value })
+  joinAndRemember(code)
 }
 
 // Whether this client has joined a room yet (server has sent state).
@@ -81,7 +92,7 @@ async function createRoom() {
   busy.value = true
   try {
     const code = await online.createRoomCode(wsBase)
-    online.joinRoom({ wsBase, room: code, name: name.value })
+    joinAndRemember(code)
   } catch (e) {
     localError.value = e instanceof Error ? e.message : 'Could not create room.'
   } finally {
@@ -89,14 +100,10 @@ async function createRoom() {
   }
 }
 
-function joinByCode() {
+/** Join the room from an invite link (?room=CODE). */
+function joinInvited() {
   if (!validName()) return
-  const code = codeInput.value.trim().toUpperCase()
-  if (code.length !== 6) {
-    localError.value = 'Room codes are 6 characters.'
-    return
-  }
-  online.joinRoom({ wsBase, room: code, name: name.value })
+  joinAndRemember(invitedCode.value)
 }
 
 function startMatch() {
@@ -122,10 +129,17 @@ async function copyLink() {
 }
 
 onMounted(() => {
-  // Auto-join if the URL carries a ?room= code (invite link).
+  // Auto-join if the URL carries a ?room= code (invite link). With a known
+  // name we join immediately; otherwise the shared code is remembered so the
+  // player can join with one tap after entering a name.
   if (typeof window !== 'undefined') {
     const code = new URL(window.location.href).searchParams.get('room')
-    if (code) codeInput.value = code.toUpperCase()
+    if (code) {
+      invitedCode.value = code.toUpperCase()
+      if (name.value.trim()) {
+        joinAndRemember(invitedCode.value)
+      }
+    }
   }
   // Load the current open-rooms list.
   void refreshRooms()
@@ -171,21 +185,16 @@ onMounted(() => {
           {{ busy ? 'Creating…' : '✨ Create a room' }}
         </button>
 
-        <div class="my-5 flex items-center gap-3 text-xs text-slate-500">
-          <span class="h-px flex-1 bg-white/10" /> OR <span class="h-px flex-1 bg-white/10" />
-        </div>
-
-        <div class="flex gap-2">
-          <input
-            v-model="codeInput"
-            maxlength="6"
-            placeholder="ENTER CODE"
-            class="w-full rounded-xl border-2 border-white/15 bg-arcade-bg/70 px-4 py-3 text-center
-                   font-mono text-lg font-bold uppercase tracking-[0.3em] text-slate-100 outline-none
-                   focus:border-arcade-p1 focus:ring-4 focus:ring-arcade-p1/30"
-            @input="codeInput = codeInput.toUpperCase()"
-          />
-          <button class="btn-primary whitespace-nowrap" @click="joinByCode">Join</button>
+        <!-- Invite link: join the shared room directly (no code entry needed) -->
+        <div
+          v-if="invitedCode"
+          class="mt-4 rounded-xl border border-arcade-p1/30 bg-arcade-p1/5 p-3 text-center"
+        >
+          <p class="text-xs text-slate-400">You were invited to room</p>
+          <p class="font-mono text-xl font-black tracking-[0.3em] text-arcade-gold">
+            {{ invitedCode }}
+          </p>
+          <button class="btn-primary mt-2 w-full" @click="joinInvited">Join this room</button>
         </div>
 
         <p v-if="localError || online.state.error" class="mt-4 text-center text-sm text-arcade-bad">
