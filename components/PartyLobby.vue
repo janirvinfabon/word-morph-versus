@@ -11,15 +11,25 @@ import {
 
 const session = useGameSession()
 const party = session.party
+const wordMorph = useWordMorph()
 const config = useRuntimeConfig()
 const wsBase = config.public.wsUrl as string
 
-const recentNames = useWordMorph().loadRecentPlayers()
+const recentNames = wordMorph.loadRecentPlayers()
 const name = ref(recentNames[0] ?? '')
 const codeInput = ref('')
 const length = ref<WordLength>(4)
 const busy = ref(false)
 const localError = ref('')
+
+/**
+ * Join a party and PERSIST the player's name (so it survives New Game / Back to
+ * the mode screen and pre-fills next time). All join paths go through here.
+ */
+function joinAndRemember(code: string) {
+  wordMorph.rememberPlayers([name.value])
+  party.joinRoom({ wsBase, room: code.toUpperCase(), name: name.value })
+}
 
 interface OpenRoom {
   code: string
@@ -47,7 +57,7 @@ async function refreshRooms() {
 
 function joinOpenRoom(code: string) {
   if (!validName()) return
-  party.joinRoom({ wsBase, room: code.toUpperCase(), name: name.value })
+  joinAndRemember(code)
 }
 
 const joined = computed(() => !!party.state.server && party.state.you !== null)
@@ -84,7 +94,7 @@ async function createRoom() {
   busy.value = true
   try {
     const code = await party.createRoomCode(wsBase)
-    party.joinRoom({ wsBase, room: code, name: name.value })
+    joinAndRemember(code)
   } catch (e) {
     localError.value = e instanceof Error ? e.message : 'Could not create room.'
   } finally {
@@ -99,7 +109,7 @@ function joinByCode() {
     localError.value = 'Room codes are 6 characters.'
     return
   }
-  party.joinRoom({ wsBase, room: code, name: name.value })
+  joinAndRemember(code)
 }
 
 function startMatch() {

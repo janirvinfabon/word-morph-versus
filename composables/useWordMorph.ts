@@ -585,6 +585,7 @@ export function createWordMorph() {
     resign,
     // persistence
     loadRecentPlayers,
+    rememberPlayers,
     loadBest,
     // helpers
     singleDiffIndex

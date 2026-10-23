@@ -171,6 +171,39 @@ describe('OnlineLobby', () => {
     expect(sock.url).toContain('room=ROOM01')
   })
 
+  it('persists the player name to localStorage on create (survives New Game)', async () => {
+    window.localStorage.clear()
+    const Comp = await loadComponent()
+    const wrapper = mount(Comp)
+
+    await wrapper.find('input').setValue('Mariel')
+    const createBtn = wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('Create'))!
+    await createBtn.trigger('click')
+    await flushPromises()
+
+    const saved = JSON.parse(
+      window.localStorage.getItem('wordmorph:recent-players') || '[]'
+    )
+    expect(saved[0]).toBe('Mariel')
+    window.localStorage.clear()
+  })
+
+  it('pre-fills the name from a previously saved name', async () => {
+    window.localStorage.setItem(
+      'wordmorph:recent-players',
+      JSON.stringify(['Mariel'])
+    )
+    const Comp = await loadComponent()
+    const wrapper = mount(Comp)
+    await flushPromises()
+
+    const nameInput = wrapper.find('input')
+    expect((nameInput.element as HTMLInputElement).value).toBe('Mariel')
+    window.localStorage.clear()
+  })
+
   it('shows an empty state when there are no open rooms', async () => {
     OPEN_ROOMS = []
     const Comp = await loadComponent()
