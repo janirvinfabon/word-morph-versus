@@ -32,10 +32,26 @@ let submitted = false
 function seed() {
   letters.value = props.baseWord.split('')
   submitted = false
-  nextTick(() => {
-    const el = inputs.value[0]
-    el?.focus()
-  })
+  nextTick(() => focusTile(0))
+}
+
+/**
+ * Focus a tile and place the caret at the END of its letter (option 1a), so
+ * the character never gets inserted in front of the existing one. Mobile
+ * browsers sometimes drop the caret before the letter; forcing it to the end
+ * here — combined with the new-character detection in onInput — makes typing
+ * reliably REPLACE the current letter.
+ */
+function focusTile(i: number) {
+  const el = inputs.value[i]
+  if (!el) return
+  el.focus()
+  try {
+    const end = el.value.length
+    el.setSelectionRange(end, end)
+  } catch {
+    /* some input types disallow setSelectionRange; focus is enough */
+  }
 }
 
 // Reseed whenever the base word changes (new turn / new game).
@@ -59,7 +75,21 @@ const diffIndex = computed(() => {
 
 function onInput(i: number, e: Event) {
   const el = e.target as HTMLInputElement
-  const ch = el.value.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(-1)
+  const base = props.baseWord.toUpperCase()
+
+  // Robustly pick the newly typed character regardless of where the mobile
+  // caret landed (it sometimes sits in front of the existing letter, so the
+  // raw value can be two chars like "XA" or "AX"). We take the first char
+  // that differs from the letter currently seeded at this tile; if both chars
+  // are new/identical we fall back to the last one typed.
+  const raw = el.value.replace(/[^a-zA-Z]/g, '').toUpperCase()
+  const existing = (letters.value[i] ?? '').toUpperCase()
+  let ch = raw.slice(-1)
+  if (raw.length > 1) {
+    const differing = raw.split('').find((c) => c !== existing)
+    ch = differing ?? raw.slice(-1)
+  }
+
   letters.value[i] = ch
   el.value = ch
 
@@ -72,21 +102,22 @@ function onInput(i: number, e: Event) {
     // Blur so the mobile keyboard dismisses and no further keys land.
     el.blur()
     emit('submit', word)
-  } else if (ch && i < props.length - 1) {
-    // Still equal to the base (they retyped the same letter) — advance focus.
-    nextTick(() => inputs.value[i + 1]?.focus())
+  } else if (ch && ch === base[i] && i < props.length - 1) {
+    // They (re)typed the SAME letter that's already there — no change yet, so
+    // advance focus to the next tile to keep the flow going.
+    nextTick(() => focusTile(i + 1))
   }
 }
 
 function onKeydown(i: number, e: KeyboardEvent) {
   if (e.key === 'Backspace' && !letters.value[i] && i > 0) {
-    nextTick(() => inputs.value[i - 1]?.focus())
+    nextTick(() => focusTile(i - 1))
   }
-  if (e.key === 'ArrowLeft' && i > 0) inputs.value[i - 1]?.focus()
-  if (e.key === 'ArrowRight' && i < props.length - 1) inputs.value[i + 1]?.focus()
+  if (e.key === 'ArrowLeft' && i > 0) focusTile(i - 1)
+  if (e.key === 'ArrowRight' && i < props.length - 1) focusTile(i + 1)
 }
 
-defineExpose({ focus: () => inputs.value[0]?.focus() })
+defineExpose({ focus: () => focusTile(0) })
 
 const accentRing = computed(() =>
   props.accent === 'p1' ? 'focus:ring-arcade-p1' : 'focus:ring-arcade-p2'
@@ -126,7 +157,7 @@ const accentActive = computed(() =>
         ]"
         @input="onInput(i, $event)"
         @keydown="onKeydown(i, $event)"
-        @focus="($event.target as HTMLInputElement).select()"
+        @focus="focusTile(i)"
       />
     </div>
 

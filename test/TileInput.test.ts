@@ -61,4 +61,47 @@ describe('TileInput instant submit', () => {
     await flushPromises()
     expect(wrapper.emitted('submit')!.length).toBe(1)
   })
+
+  it('replaces the existing letter when the caret lands in front (mobile)', async () => {
+    // Simulates the mobile bug: the caret sits BEFORE the seeded letter, so the
+    // raw input becomes the new char followed by the existing one ("HF" at the
+    // first tile of FALL). The new letter must win -> HALL, not a two-change.
+    const wrapper = mount(TileInput, {
+      props: {
+        baseWord: 'FALL',
+        length: 4,
+        highlightIndex: null,
+        accent: 'p1',
+        disabled: false
+      }
+    })
+    const inputs = wrapper.findAll('input')
+    await inputs[0].setValue('HF') // 'H' typed in front of the existing 'F'
+    await flushPromises()
+
+    const emitted = wrapper.emitted('submit')
+    expect(emitted).toBeTruthy()
+    expect(emitted!.length).toBe(1)
+    expect(emitted![0][0]).toBe('HALL')
+  })
+
+  it('replaces the existing letter when the caret lands behind it (mobile)', async () => {
+    // Same bug, opposite order: existing char first, new char appended ("FH").
+    const wrapper = mount(TileInput, {
+      props: {
+        baseWord: 'FALL',
+        length: 4,
+        highlightIndex: null,
+        accent: 'p1',
+        disabled: false
+      }
+    })
+    const inputs = wrapper.findAll('input')
+    await inputs[0].setValue('FH') // existing 'F' then new 'H'
+    await flushPromises()
+
+    const emitted = wrapper.emitted('submit')
+    expect(emitted).toBeTruthy()
+    expect(emitted![0][0]).toBe('HALL')
+  })
 })
